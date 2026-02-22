@@ -1,0 +1,52 @@
+name: Build unsigned IPA (for SideStore)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout socks5-ios
+        uses: actions/checkout@v4
+
+      - name: Build HevSocks5Server.xcframework
+        run: |
+          set -euo pipefail
+          git clone --recursive https://github.com/heiher/hev-socks5-server
+          cd hev-socks5-server
+          ./build-apple.sh
+          cd ..
+          rm -rf HevSocks5Server.xcframework
+          cp -R hev-socks5-server/HevSocks5Server.xcframework ./HevSocks5Server.xcframework
+
+      - name: List schemes (debug)
+        run: xcodebuild -list -project Socks5.xcodeproj
+
+      - name: Archive (NO signing)
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project Socks5.xcodeproj \
+            -scheme Socks5 \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -archivePath unsigned.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Make unsigned IPA
+        run: |
+          set -euo pipefail
+          rm -rf Payload Socks5-unsigned.ipa
+          mkdir -p Payload
+          cp -R unsigned.xcarchive/Products/Applications/*.app Payload/
+          /usr/bin/zip -r Socks5-unsigned.ipa Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Socks5-unsigned-ipa
+          path: Socks5-unsigned.ipa
